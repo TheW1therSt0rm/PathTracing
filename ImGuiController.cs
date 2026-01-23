@@ -52,7 +52,7 @@ namespace RayTracing
 
         public void Update(GameWindow window, float deltaSeconds)
         {
-            SetPerFrameImGuiData(deltaSeconds);
+            SetPerFrameImGuiData(window, deltaSeconds);
             UpdateInput(window);
 
             ImGui.NewFrame();
@@ -103,11 +103,17 @@ namespace RayTracing
             _keyMap[Keys.Z] = ImGuiKey.Z;
         }
 
-        private void SetPerFrameImGuiData(float deltaSeconds)
+        private void SetPerFrameImGuiData(GameWindow window, float deltaSeconds)
         {
             var io = ImGui.GetIO();
-            io.DisplaySize = new Vector2(_windowWidth, _windowHeight);
-            io.DisplayFramebufferScale = Vector2.One;
+            var clientSize = window.ClientSize;
+            io.DisplaySize = new Vector2(clientSize.X, clientSize.Y);
+
+            var windowSize = window.Size;
+            float scaleX = clientSize.X > 0 ? windowSize.X / (float)clientSize.X : 1f;
+            float scaleY = clientSize.Y > 0 ? windowSize.Y / (float)clientSize.Y : 1f;
+            io.DisplayFramebufferScale = new Vector2(scaleX, scaleY);
+
             io.DeltaTime = deltaSeconds > 0 ? deltaSeconds : 1f / 60f;
         }
 
@@ -117,7 +123,12 @@ namespace RayTracing
             var mouse = window.MouseState;
             var keyboard = window.KeyboardState;
 
-            io.AddMousePosEvent(mouse.X, mouse.Y);
+            float scaleX = io.DisplayFramebufferScale.X;
+            float scaleY = io.DisplayFramebufferScale.Y;
+            float mouseX = scaleX != 0f ? mouse.X / scaleX : mouse.X;
+            float mouseY = scaleY != 0f ? mouse.Y / scaleY : mouse.Y;
+
+            io.AddMousePosEvent(mouseX, mouseY + 50f);
             io.AddMouseButtonEvent(0, mouse.IsButtonDown(MouseButton.Left));
             io.AddMouseButtonEvent(1, mouse.IsButtonDown(MouseButton.Right));
             io.AddMouseButtonEvent(2, mouse.IsButtonDown(MouseButton.Middle));
@@ -130,6 +141,11 @@ namespace RayTracing
             io.AddKeyEvent(ImGuiKey.ModShift, keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift));
             io.AddKeyEvent(ImGuiKey.ModAlt, keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt));
             io.AddKeyEvent(ImGuiKey.ModSuper, keyboard.IsKeyDown(Keys.LeftSuper) || keyboard.IsKeyDown(Keys.RightSuper));
+        }
+        
+        public bool MouseInGuiWin()
+        {
+            return ImGui.GetIO().WantCaptureMouse;
         }
 
         private void CreateDeviceResources()

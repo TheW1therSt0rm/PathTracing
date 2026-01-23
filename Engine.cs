@@ -235,7 +235,10 @@ namespace RayTracing
             oldTime = now;
             _imguiDelta = dt;
 
-            if (_win.MouseState.IsButtonDown(MouseButton.Left))
+#pragma warning disable CS8629 // Nullable value type may be null.
+            bool inGuiWin = (bool)(_imgui?.MouseInGuiWin()) && _imgui.MouseInGuiWin();
+#pragma warning restore CS8629 // Nullable value type may be null.
+            if (_win.MouseState.IsButtonDown(MouseButton.Left) && !inGuiWin)
                 _win.CursorState = CursorState.Grabbed;
             if (_win.KeyboardState.IsKeyDown(Keys.Escape))
                 _win.CursorState = CursorState.Normal;
@@ -366,12 +369,16 @@ namespace RayTracing
 
             if (_imgui != null)
             {
+                System.Numerics.Vector3 camPos = new(_camPos.X, _camPos.Y, _camPos.Z);
                 _imgui.Update(_win, _imguiDelta);
 
                 ImGui.Begin("Render");
                 ImGui.Text($"Frame: {_frame}");
                 ImGui.Checkbox("Accumulation", ref _accumalation);
+                ImGui.InputFloat3("Camera Position", ref camPos);
                 ImGui.End();
+                
+                _camPos = new(camPos.X, camPos.Y, camPos.Z);
 
                 _imgui.Render();
             }
