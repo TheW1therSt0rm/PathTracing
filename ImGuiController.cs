@@ -289,7 +289,7 @@ void main()
 
             for (int n = 0; n < drawData.CmdListsCount; n++)
             {
-                var cmdList = drawData.CmdListsRange[n];
+                var cmdList = drawData.CmdLists[n];
                 int vtxBufferSize = cmdList.VtxBuffer.Size * vertexSize;
                 int idxBufferSize = cmdList.IdxBuffer.Size * sizeof(ushort);
 
