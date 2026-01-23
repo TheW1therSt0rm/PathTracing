@@ -81,6 +81,12 @@ namespace RayTracing
         {
             base.OnMouseDown(e);
 
+            if (Engine != null && Engine.IsImGuiMouseCaptured && MouseCaptured)
+            {
+                CaptureMouse(false);
+                return;
+            }
+
             // Click to recapture
             if (!MouseCaptured && e.Button == MouseButton.Left && !(Engine?.IsImGuiMouseCaptured ?? false))
                 CaptureMouse(true);
@@ -104,6 +110,8 @@ namespace RayTracing
 
             // In grab mode, OpenTK keeps cursor centered; delta is still valid.
         }
+
+        public void SetMouseCapture(bool capture) => CaptureMouse(capture);
 
         // True fullscreen toggle (stores/restores previous windowed state)
         private Vector2i _windowedSize;

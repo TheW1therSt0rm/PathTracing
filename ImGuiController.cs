@@ -17,15 +17,20 @@ namespace RayTracing
         private int _indexBuffer;
         private int _vertexBufferSize;
         private int _indexBufferSize;
+
         private int _fontTexture;
         private int _shader;
         private int _attribLocationTex;
         private int _attribLocationProjMtx;
+
         private int _windowWidth;
         private int _windowHeight;
         private bool _frameBegun;
 
         private readonly Dictionary<Keys, ImGuiKey> _keyMap = new();
+
+        // Optional: feed text input from your window to this (see method below)
+        private readonly Queue<uint> _queuedInput = new();
 
         public ImGuiController(int width, int height)
         {
@@ -33,21 +38,19 @@ namespace RayTracing
             _windowHeight = height;
 
             ImGui.CreateContext();
+
             var io = ImGui.GetIO();
             io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
-            io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
+            io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;      // enable if you want docking
+            io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;    // only enable if you also implement a platform backend
+
             io.BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset;
 
             ImGui.StyleColorsDark();
-            if ((io.ConfigFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
-            {
-                var style = ImGui.GetStyle();
-                style.WindowRounding = 0.0f;
-                style.Colors[(int)ImGuiCol.WindowBg].W = 1.0f;
-            }
 
             SetKeyMappings();
             CreateDeviceResources();
+
             _frameBegun = false;
         }
 
@@ -55,6 +58,16 @@ namespace RayTracing
         {
             _windowWidth = width;
             _windowHeight = height;
+        }
+
+        /// <summary>
+        /// Call this from your GameWindow/TextInput event if you want proper text entry:
+        /// window.TextInput += e => controller.AddInputCharacter((uint)e.Unicode);
+        /// </summary>
+        public void AddInputCharacter(uint codepoint)
+        {
+            if (codepoint != 0)
+                _queuedInput.Enqueue(codepoint);
         }
 
         public void Update(GameWindow window, float deltaSeconds)
@@ -72,29 +85,28 @@ namespace RayTracing
                 return;
 
             _frameBegun = false;
+
             ImGui.Render();
             RenderImDrawData(ImGui.GetDrawData());
 
-            var io = ImGui.GetIO();
-            if ((io.ConfigFlags & ImGuiConfigFlags.ViewportsEnable) != 0)
-            {
-                ImGui.UpdatePlatformWindows();
-                ImGui.RenderPlatformWindowsDefault();
-            }
+            ImGui.UpdatePlatformWindows();
+            ImGui.RenderPlatformWindowsDefault();
         }
 
         public void Dispose()
         {
-            GL.DeleteBuffer(_vertexBuffer);
-            GL.DeleteBuffer(_indexBuffer);
-            GL.DeleteVertexArray(_vertexArray);
-            GL.DeleteTexture(_fontTexture);
-            GL.DeleteProgram(_shader);
+            if (_vertexBuffer != 0) GL.DeleteBuffer(_vertexBuffer);
+            if (_indexBuffer != 0) GL.DeleteBuffer(_indexBuffer);
+            if (_vertexArray != 0) GL.DeleteVertexArray(_vertexArray);
+            if (_fontTexture != 0) GL.DeleteTexture(_fontTexture);
+            if (_shader != 0) GL.DeleteProgram(_shader);
+
             ImGui.DestroyContext();
         }
 
         private void SetKeyMappings()
         {
+            // Navigation
             _keyMap[Keys.Tab] = ImGuiKey.Tab;
             _keyMap[Keys.Left] = ImGuiKey.LeftArrow;
             _keyMap[Keys.Right] = ImGuiKey.RightArrow;
@@ -104,17 +116,56 @@ namespace RayTracing
             _keyMap[Keys.PageDown] = ImGuiKey.PageDown;
             _keyMap[Keys.Home] = ImGuiKey.Home;
             _keyMap[Keys.End] = ImGuiKey.End;
+            _keyMap[Keys.Insert] = ImGuiKey.Insert;
             _keyMap[Keys.Delete] = ImGuiKey.Delete;
             _keyMap[Keys.Backspace] = ImGuiKey.Backspace;
             _keyMap[Keys.Enter] = ImGuiKey.Enter;
             _keyMap[Keys.Escape] = ImGuiKey.Escape;
             _keyMap[Keys.Space] = ImGuiKey.Space;
-            _keyMap[Keys.A] = ImGuiKey.A;
-            _keyMap[Keys.C] = ImGuiKey.C;
-            _keyMap[Keys.V] = ImGuiKey.V;
-            _keyMap[Keys.X] = ImGuiKey.X;
-            _keyMap[Keys.Y] = ImGuiKey.Y;
-            _keyMap[Keys.Z] = ImGuiKey.Z;
+
+            // Letters
+            _keyMap[Keys.A] = ImGuiKey.A; _keyMap[Keys.B] = ImGuiKey.B; _keyMap[Keys.C] = ImGuiKey.C;
+            _keyMap[Keys.D] = ImGuiKey.D; _keyMap[Keys.E] = ImGuiKey.E; _keyMap[Keys.F] = ImGuiKey.F;
+            _keyMap[Keys.G] = ImGuiKey.G; _keyMap[Keys.H] = ImGuiKey.H; _keyMap[Keys.I] = ImGuiKey.I;
+            _keyMap[Keys.J] = ImGuiKey.J; _keyMap[Keys.K] = ImGuiKey.K; _keyMap[Keys.L] = ImGuiKey.L;
+            _keyMap[Keys.M] = ImGuiKey.M; _keyMap[Keys.N] = ImGuiKey.N; _keyMap[Keys.O] = ImGuiKey.O;
+            _keyMap[Keys.P] = ImGuiKey.P; _keyMap[Keys.Q] = ImGuiKey.Q; _keyMap[Keys.R] = ImGuiKey.R;
+            _keyMap[Keys.S] = ImGuiKey.S; _keyMap[Keys.T] = ImGuiKey.T; _keyMap[Keys.U] = ImGuiKey.U;
+            _keyMap[Keys.V] = ImGuiKey.V; _keyMap[Keys.W] = ImGuiKey.W; _keyMap[Keys.X] = ImGuiKey.X;
+            _keyMap[Keys.Y] = ImGuiKey.Y; _keyMap[Keys.Z] = ImGuiKey.Z;
+
+            // Digits
+            _keyMap[Keys.D0] = ImGuiKey._0;
+            _keyMap[Keys.D1] = ImGuiKey._1;
+            _keyMap[Keys.D2] = ImGuiKey._2;
+            _keyMap[Keys.D3] = ImGuiKey._3;
+            _keyMap[Keys.D4] = ImGuiKey._4;
+            _keyMap[Keys.D5] = ImGuiKey._5;
+            _keyMap[Keys.D6] = ImGuiKey._6;
+            _keyMap[Keys.D7] = ImGuiKey._7;
+            _keyMap[Keys.D8] = ImGuiKey._8;
+            _keyMap[Keys.D9] = ImGuiKey._9;
+
+            // Function keys
+            _keyMap[Keys.F1] = ImGuiKey.F1;   _keyMap[Keys.F2] = ImGuiKey.F2;
+            _keyMap[Keys.F3] = ImGuiKey.F3;   _keyMap[Keys.F4] = ImGuiKey.F4;
+            _keyMap[Keys.F5] = ImGuiKey.F5;   _keyMap[Keys.F6] = ImGuiKey.F6;
+            _keyMap[Keys.F7] = ImGuiKey.F7;   _keyMap[Keys.F8] = ImGuiKey.F8;
+            _keyMap[Keys.F9] = ImGuiKey.F9;   _keyMap[Keys.F10] = ImGuiKey.F10;
+            _keyMap[Keys.F11] = ImGuiKey.F11; _keyMap[Keys.F12] = ImGuiKey.F12;
+
+            // Punctuation (handy for text boxes / shortcuts)
+            _keyMap[Keys.Minus] = ImGuiKey.Minus;
+            _keyMap[Keys.Equal] = ImGuiKey.Equal;
+            _keyMap[Keys.LeftBracket] = ImGuiKey.LeftBracket;
+            _keyMap[Keys.RightBracket] = ImGuiKey.RightBracket;
+            _keyMap[Keys.Backslash] = ImGuiKey.Backslash;
+            _keyMap[Keys.Semicolon] = ImGuiKey.Semicolon;
+            _keyMap[Keys.Apostrophe] = ImGuiKey.Apostrophe;
+            _keyMap[Keys.Comma] = ImGuiKey.Comma;
+            _keyMap[Keys.Period] = ImGuiKey.Period;
+            _keyMap[Keys.Slash] = ImGuiKey.Slash;
+            _keyMap[Keys.GraveAccent] = ImGuiKey.GraveAccent;
         }
 
         private void SetPerFrameImGuiData(GameWindow window, float deltaSeconds)
@@ -123,6 +174,7 @@ namespace RayTracing
             var clientSize = window.ClientSize;
             io.DisplaySize = new Vector2(clientSize.X, clientSize.Y);
 
+            // Framebuffer scale (HiDPI)
             var windowSize = window.Size;
             float scaleX = clientSize.X > 0 ? windowSize.X / (float)clientSize.X : 1f;
             float scaleY = clientSize.Y > 0 ? windowSize.Y / (float)clientSize.Y : 1f;
@@ -137,12 +189,18 @@ namespace RayTracing
             var mouse = window.MouseState;
             var keyboard = window.KeyboardState;
 
+            // Feed text input (optional, but strongly recommended for actual typing)
+            while (_queuedInput.Count > 0)
+                io.AddInputCharacter(_queuedInput.Dequeue());
+
+            // Mouse position in ImGui “display” coordinates.
             float scaleX = io.DisplayFramebufferScale.X;
             float scaleY = io.DisplayFramebufferScale.Y;
-            float mouseX = scaleX != 0f ? mouse.X / scaleX : mouse.X;
-            float mouseY = scaleY != 0f ? mouse.Y / scaleY : mouse.Y;
 
-            io.AddMousePosEvent(mouseX, mouseY);
+            float mouseX = (scaleX != 0f) ? (mouse.X / scaleX) : mouse.X;
+            float mouseY = (scaleY != 0f) ? (mouse.Y / scaleY) : mouse.Y;
+
+            io.AddMousePosEvent(mouseX, mouseY + 40f);
             io.AddMouseButtonEvent(0, mouse.IsButtonDown(MouseButton.Left));
             io.AddMouseButtonEvent(1, mouse.IsButtonDown(MouseButton.Right));
             io.AddMouseButtonEvent(2, mouse.IsButtonDown(MouseButton.Middle));
@@ -156,18 +214,14 @@ namespace RayTracing
             io.AddKeyEvent(ImGuiKey.ModAlt, keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt));
             io.AddKeyEvent(ImGuiKey.ModSuper, keyboard.IsKeyDown(Keys.LeftSuper) || keyboard.IsKeyDown(Keys.RightSuper));
         }
-        
-        public bool MouseInGuiWin()
-        {
-            return ImGui.GetIO().WantCaptureMouse;
-        }
 
         public bool WantsMouseCapture => ImGui.GetIO().WantCaptureMouse;
+        public bool MouseInGuiWin() => ImGui.GetIO().WantCaptureMouse;
 
         private void CreateDeviceResources()
         {
-            _vertexBufferSize = 10000;
-            _indexBufferSize = 2000;
+            _vertexBufferSize = 64 * 1024; // bytes (bigger default)
+            _indexBufferSize = 16 * 1024;  // bytes
 
             _vertexArray = GL.GenVertexArray();
             _vertexBuffer = GL.GenBuffer();
@@ -200,15 +254,28 @@ namespace RayTracing
             var io = ImGui.GetIO();
             io.Fonts.GetTexDataAsRGBA32(out IntPtr pixels, out int width, out int height, out _);
 
+            int prevTex;
+            GL.GetInteger(GetPName.TextureBinding2D, out prevTex);
+
+            int prevUnpack;
+            GL.GetInteger(GetPName.UnpackAlignment, out prevUnpack);
+            GL.PixelStore(PixelStoreParameter.UnpackAlignment, 1);
+
             _fontTexture = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2D, _fontTexture);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, pixels);
 
             io.Fonts.SetTexID((IntPtr)_fontTexture);
             io.Fonts.ClearTexData();
+
+            GL.PixelStore(PixelStoreParameter.UnpackAlignment, prevUnpack);
+            GL.BindTexture(TextureTarget.Texture2D, prevTex);
         }
 
         private void CreateShader()
@@ -275,8 +342,35 @@ void main()
             if (fbWidth <= 0 || fbHeight <= 0)
                 return;
 
-            drawData.ScaleClipRects(ImGui.GetIO().DisplayFramebufferScale);
+            // --- Backup GL state (so ImGui doesn't break your renderer) ---
+            int lastProgram, lastTexture, lastArrayBuffer, lastElementArrayBuffer, lastVertexArray;
+            int lastBlendSrcRgb, lastBlendDstRgb, lastBlendSrcAlpha, lastBlendDstAlpha;
+            int lastBlendEqRgb, lastBlendEqAlpha;
+            int[] lastViewport = new int[4];
+            int[] lastScissor = new int[4];
 
+            bool lastBlend = GL.IsEnabled(EnableCap.Blend);
+            bool lastCull = GL.IsEnabled(EnableCap.CullFace);
+            bool lastDepth = GL.IsEnabled(EnableCap.DepthTest);
+            bool lastScissorTest = GL.IsEnabled(EnableCap.ScissorTest);
+
+            GL.GetInteger(GetPName.CurrentProgram, out lastProgram);
+            GL.GetInteger(GetPName.TextureBinding2D, out lastTexture);
+            GL.GetInteger(GetPName.ArrayBufferBinding, out lastArrayBuffer);
+            GL.GetInteger(GetPName.ElementArrayBufferBinding, out lastElementArrayBuffer);
+            GL.GetInteger(GetPName.VertexArrayBinding, out lastVertexArray);
+
+            GL.GetInteger(GetPName.BlendSrcRgb, out lastBlendSrcRgb);
+            GL.GetInteger(GetPName.BlendDstRgb, out lastBlendDstRgb);
+            GL.GetInteger(GetPName.BlendSrcAlpha, out lastBlendSrcAlpha);
+            GL.GetInteger(GetPName.BlendDstAlpha, out lastBlendDstAlpha);
+            GL.GetInteger(GetPName.BlendEquationRgb, out lastBlendEqRgb);
+            GL.GetInteger(GetPName.BlendEquationAlpha, out lastBlendEqAlpha);
+
+            GL.GetInteger(GetPName.Viewport, lastViewport);
+            GL.GetInteger(GetPName.ScissorBox, lastScissor);
+
+            // --- Setup state for ImGui ---
             GL.Viewport(0, 0, fbWidth, fbHeight);
             GL.Enable(EnableCap.Blend);
             GL.BlendEquation(BlendEquationMode.FuncAdd);
@@ -293,8 +387,8 @@ void main()
                 drawData.DisplayPos.X + drawData.DisplaySize.X,
                 drawData.DisplayPos.Y + drawData.DisplaySize.Y,
                 drawData.DisplayPos.Y,
-                -1.0f,
-                1.0f);
+                -1.0f, 1.0f);
+
             GL.UniformMatrix4(_attribLocationProjMtx, false, ref proj);
 
             GL.BindVertexArray(_vertexArray);
@@ -315,6 +409,10 @@ void main()
                 GL.BindBuffer(BufferTarget.ElementArrayBuffer, _indexBuffer);
                 GL.BufferData(BufferTarget.ElementArrayBuffer, _indexBufferSize, IntPtr.Zero, BufferUsageHint.StreamDraw);
             }
+
+            // Clip rect math (correct for DisplayPos + FramebufferScale)
+            Vector2 clipOff = new Vector2(drawData.DisplayPos.X, drawData.DisplayPos.Y);
+            Vector2 clipScale = new Vector2(drawData.FramebufferScale.X, drawData.FramebufferScale.Y);
 
             int vtxOffset = 0;
             int idxOffset = 0;
@@ -337,22 +435,54 @@ void main()
                     if (pcmd.UserCallback != IntPtr.Zero)
                         continue;
 
-                    var clip = pcmd.ClipRect;
-                    GL.Scissor((int)clip.X, (int)(fbHeight - clip.W), (int)(clip.Z - clip.X), (int)(clip.W - clip.Y));
+                    // Transform to framebuffer space
+                    var cr = pcmd.ClipRect;
+                    float clipX1 = (cr.X - clipOff.X) * clipScale.X;
+                    float clipY1 = (cr.Y - clipOff.Y) * clipScale.Y;
+                    float clipX2 = (cr.Z - clipOff.X) * clipScale.X;
+                    float clipY2 = (cr.W - clipOff.Y) * clipScale.Y;
 
-                    GL.BindTexture(TextureTarget.Texture2D, (int)pcmd.TextureId);
-                    GL.DrawElementsBaseVertex(PrimitiveType.Triangles, (int)pcmd.ElemCount,
-                        DrawElementsType.UnsignedShort, (IntPtr)((idxOffset + pcmd.IdxOffset) * sizeof(ushort)),
-                        (int)(vtxOffset + pcmd.VtxOffset));
+                    if (clipX1 < fbWidth && clipY1 < fbHeight && clipX2 >= 0.0f && clipY2 >= 0.0f)
+                    {
+                        GL.Scissor(
+                            (int)clipX1,
+                            (int)(fbHeight - clipY2),
+                            (int)(clipX2 - clipX1),
+                            (int)(clipY2 - clipY1));
+
+                        GL.BindTexture(TextureTarget.Texture2D, (int)pcmd.TextureId);
+
+                        GL.DrawElementsBaseVertex(
+                            PrimitiveType.Triangles,
+                            (int)pcmd.ElemCount,
+                            DrawElementsType.UnsignedShort,
+                            (IntPtr)((idxOffset + pcmd.IdxOffset) * sizeof(ushort)),
+                            (int)(vtxOffset + pcmd.VtxOffset));
+                    }
                 }
 
                 vtxOffset += cmdList.VtxBuffer.Size;
                 idxOffset += cmdList.IdxBuffer.Size;
             }
 
-            GL.Disable(EnableCap.ScissorTest);
-            GL.BindVertexArray(0);
-            GL.UseProgram(0);
+            // --- Restore GL state ---
+            if (!lastBlend) GL.Disable(EnableCap.Blend); else GL.Enable(EnableCap.Blend);
+            if (lastCull) GL.Enable(EnableCap.CullFace); else GL.Disable(EnableCap.CullFace);
+            if (lastDepth) GL.Enable(EnableCap.DepthTest); else GL.Disable(EnableCap.DepthTest);
+            if (lastScissorTest) GL.Enable(EnableCap.ScissorTest); else GL.Disable(EnableCap.ScissorTest);
+
+            GL.BlendEquationSeparate((BlendEquationMode)lastBlendEqRgb, (BlendEquationMode)lastBlendEqAlpha);
+            GL.BlendFuncSeparate((BlendingFactorSrc)lastBlendSrcRgb, (BlendingFactorDest)lastBlendDstRgb,
+                                 (BlendingFactorSrc)lastBlendSrcAlpha, (BlendingFactorDest)lastBlendDstAlpha);
+
+            GL.UseProgram(lastProgram);
+            GL.BindTexture(TextureTarget.Texture2D, lastTexture);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, lastArrayBuffer);
+            GL.BindBuffer(BufferTarget.ElementArrayBuffer, lastElementArrayBuffer);
+            GL.BindVertexArray(lastVertexArray);
+
+            GL.Viewport(lastViewport[0], lastViewport[1], lastViewport[2], lastViewport[3]);
+            GL.Scissor(lastScissor[0], lastScissor[1], lastScissor[2], lastScissor[3]);
         }
     }
 }

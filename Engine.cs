@@ -94,7 +94,7 @@ namespace RayTracing
 
         public Engine(Window win)
         {
-            _win = win;
+            _win = win;_win.TextInput += e => _imgui?.AddInputCharacter((uint)e.Unicode);
             _mainThreadId = Environment.CurrentManagedThreadId;
             ThreadStart threadStarter1 = new(Init);
             threads.Add(new Thread(threadStarter1));
@@ -237,6 +237,13 @@ namespace RayTracing
             oldTime = now;
             _imguiDelta = dt;
 
+            if (_imgui != null)
+            {
+                _imgui.Update(_win, _imguiDelta);
+                if (_imgui.WantsMouseCapture && _win.MouseCaptured)
+                    _win.SetMouseCapture(false);
+            }
+
             if (_win.KeyboardState.IsKeyDown(Keys.F11))
                 _needsReset = true;
 
@@ -363,18 +370,22 @@ namespace RayTracing
 
             if (_imgui != null)
             {
-                _imgui.Update(_win, _imguiDelta);
-
+                Vector3 camPos = _camPos;
+                float pitch = _pitch;
+                float yaw = _yaw;
                 ImGui.Begin("Render");
                 ImGui.Text($"Frame: {_frame}");
                 ImGui.Checkbox("Accumulation", ref _accumalation);
                 ImGui.End();
                 
-                ImGui.Begin("Camera Position");
-                ImGui.InputFloat("X", ref _camPos.X);
-                ImGui.InputFloat("Y", ref _camPos.Y);
-                ImGui.InputFloat("Z", ref _camPos.Z);
+                ImGui.Begin("Camera");
+                ImGui.DragFloat("X", ref _camPos.X, 0.01f);
+                ImGui.DragFloat("Y", ref _camPos.Y, 0.01f);
+                ImGui.DragFloat("Z", ref _camPos.Z, 0.01f);
+                ImGui.DragFloat("yaw", ref _yaw, 0.01f);
+                ImGui.DragFloat("pitch", ref _pitch, 0.01f, -89.999f, 89.999f);
                 ImGui.End();
+                _needsReset = camPos != _camPos || pitch != _pitch || yaw != _yaw;
 
                 _imgui.Render();
             }
