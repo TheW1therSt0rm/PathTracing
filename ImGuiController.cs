@@ -241,6 +241,7 @@ namespace RayTracing.UI
             GL.BufferData(BufferTarget.ElementArrayBuffer, _indexBufferSize, IntPtr.Zero, BufferUsageHint.StreamDraw);
 
             CreateShader();
+            ConfigureFonts();
             CreateFontTexture();
 
             int stride = Marshal.SizeOf<ImDrawVert>();
@@ -252,6 +253,45 @@ namespace RayTracing.UI
             GL.VertexAttribPointer(2, 4, VertexAttribPointerType.UnsignedByte, true, stride, Marshal.OffsetOf<ImDrawVert>("col"));
 
             GL.BindVertexArray(0);
+        }
+
+        private unsafe void ConfigureFonts()
+        {
+            var io = ImGui.GetIO();
+
+            io.Fonts.Clear();
+            io.Fonts.AddFontDefault();
+
+            const string emojiFontPath = @"C:\Windows\Fonts\seguisym.ttf";
+
+            ImFontConfigPtr config = ImGuiNative.ImFontConfig_ImFontConfig();
+            config.MergeMode = true;
+            config.PixelSnapH = true;
+
+            ushort[] symbolRanges =
+            [
+                0x2190, 0x21FF, // Arrows
+                0x2300, 0x23FF, // Misc technical
+                0x2500, 0x257F, // Box drawing
+                0x2580, 0x259F, // Block elements
+                0x25A0, 0x25FF, // Geometric shapes
+                0x2600, 0x26FF, // Misc symbols
+                0x2700, 0x27BF, // Dingbats
+                0
+            ];
+
+            GCHandle rangesHandle = GCHandle.Alloc(symbolRanges, GCHandleType.Pinned);
+            try
+            {
+                io.Fonts.AddFontFromFileTTF(emojiFontPath, 16.0f, config, rangesHandle.AddrOfPinnedObject());
+                io.Fonts.Build();
+            }
+            finally
+            {
+                rangesHandle.Free();
+            }
+
+            ImGuiNative.ImFontConfig_destroy(config);
         }
 
         private void CreateFontTexture()
@@ -276,7 +316,7 @@ namespace RayTracing.UI
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, pixels);
 
-            io.Fonts.SetTexID((IntPtr)_fontTexture);
+            io.Fonts.SetTexID(_fontTexture);
             io.Fonts.ClearTexData();
 
             GL.PixelStore(PixelStoreParameter.UnpackAlignment, prevUnpack);

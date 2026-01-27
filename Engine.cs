@@ -81,9 +81,6 @@ namespace RayTracing.Main
         private float _lastPitch;
         private bool _basisDirty = true;
 
-        private float _lastTitleUpdate;
-        private const float TitleUpdateInterval = 0.25f;
-
         private Vector3[] _bvhVerts = Array.Empty<Vector3>();
         private int[] _bvhIndices = Array.Empty<int>();
 
@@ -106,7 +103,10 @@ namespace RayTracing.Main
 
         private readonly int _mainThreadId;
 
-        public List<string> consoleLines = [];
+        public List<(int flag, string line)> consoleLines = [];
+        public void CommentLog(string Comment) => consoleLines.Add((0, Comment));
+        public void WarningLog(string Warning) => consoleLines.Add((1, Warning));
+        public void ErrorLog(string Error) => consoleLines.Add((2, Error));
 
         public Engine(Window win)
         {
@@ -128,8 +128,9 @@ namespace RayTracing.Main
             ThreadManager.Add(threadStarter7, "UploadSpheres");
             ThreadStart threadStarter8 = new(UploadCubes);
             ThreadManager.Add(threadStarter8, "UploadCubes");
-            consoleLines.Add("This a test");
-            consoleLines.Add("to see if the console will work");
+            CommentLog($"GL Vendor  : {GL.GetString(StringName.Vendor)}");
+            CommentLog($"GL Renderer: {GL.GetString(StringName.Renderer)}");
+            CommentLog($"GL Version : {GL.GetString(StringName.Version)}");
         }
 
         private bool IsMainThread => Environment.CurrentManagedThreadId == _mainThreadId;
@@ -223,14 +224,6 @@ namespace RayTracing.Main
             ResetAccumulation();
         }
 
-        static Vector2 ParseVec2(string line)
-        {
-            var sp = line.Split([' ', '=', ',', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            if (sp.Length < 2) throw new FormatException("Need at least 2 numbers");
-            float x = float.Parse(sp[1], NumberStyles.Float, CultureInfo.InvariantCulture);
-            float y = float.Parse(sp[2], NumberStyles.Float, CultureInfo.InvariantCulture);
-            return new Vector2(x, y);
-        }
 
         public void Update()
         {
@@ -285,9 +278,12 @@ namespace RayTracing.Main
 
             if (wish.LengthSquared > 0)
             {
-                _camPos += wish.Normalized() * speed * dt;
+                wish = wish.Normalized() * speed * dt;
+                _camPos += wish;
+                consoleLines.Add((0, $"dx: {wish.X} dy: {wish.Y} dz: {wish.Z}"));
                 _needsReset = true;
             }
+            consoleLines.Add((0, $"forward: x: {fwd.X} y: {fwd.Y} z: {fwd.Z}"));
         }
 
         public void Render()
@@ -375,16 +371,26 @@ namespace RayTracing.Main
                 ImGui.DragFloat("pitch", ref _pitch, 0.01f, -89.999f, 89.999f);
                 ImGui.End();
 
-                ImGui.Begin("OpenGL Settings");
-                ImGui.Text($"GL Vendor  : {GL.GetString(StringName.Vendor)}");
-                ImGui.Text($"GL Renderer: {GL.GetString(StringName.Renderer)}");
-                ImGui.Text($"GL Version : {GL.GetString(StringName.Version)}");
-                ImGui.End();
-
                 ImGui.Begin("Console");
-                foreach (string line in consoleLines)
+                foreach ((int flag, string line) currentLine in consoleLines)
                 {
-                    ImGui.Text(line);
+                    string type;
+                    switch (currentLine.flag)
+                    {
+                        default:
+                            type = "";
+                            break;
+                        case 0:
+                            type = "✉ Debug: ";
+                            break;
+                        case 1:
+                            type = "⚠ Warning: ";
+                            break;
+                        case 2:
+                            type = "⛔ Error: ";
+                            break;
+                    }
+                    ImGui.Text(type + currentLine.line);
                 }
                 ImGui.End();
 
