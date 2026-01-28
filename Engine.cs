@@ -56,6 +56,8 @@ namespace Zirconium.Main
         private int _numCubes;
         private int _numTris;
         private int _numBvhNodes;
+        private int lastMode = 0;
+        private int mode = 0;
 
         private float oldTime = 0f;
         private float dt = 1f;
@@ -95,10 +97,11 @@ namespace Zirconium.Main
         private const float MoveSpeed = 6f;
         private const float MouseSens = 0.12f;
         private const float FovDeg = 60f;
-        private const int TargetRenderHeight = 180;
 
         private int _renderWidth;
         private int _renderHeight;
+        private int TargetRenderHeight = 180;
+        private int TargetRenderHeightNonH = 180;
         private int _renderScale = 1;
 
         private readonly int _mainThreadId;
@@ -331,6 +334,8 @@ namespace Zirconium.Main
             int h = _renderHeight;
             int outW = _win.Size.X;
             int outH = _win.Size.Y;
+            if (mode == 1) { w = outW; h = outH; TargetRenderHeight = outH; }
+            else if (mode == 0) { TargetRenderHeight = TargetRenderHeightNonH; }
 
             UpdateBasisIfNeeded();
             var fwd = _camForward;
@@ -385,18 +390,25 @@ namespace Zirconium.Main
 
             if (_imgui != null && _imgui.FrameBegun)
             {
+                int lastTargetHeight = TargetRenderHeight;
+                lastMode = mode;
                 Vector3 camPos = _camPos;
                 float pitch = _pitch;
                 float yaw = _yaw;
                 ImGui.Begin("Render");
-                ImGui.BeginChild("Render Info");
                 ImGui.Text($"FPS: {1f / dt}");
                 ImGui.Text($"FMS: {1000f * dt}");
                 ImGui.Text($"Frame: {_frame}");
-                ImGui.EndChild();
-                ImGui.BeginChild("Render Settings");
                 ImGui.Checkbox("Accumulation", ref _accumalation);
-                ImGui.EndChild();
+                ImGui.DragInt("Downscale Mode", ref mode, 1f, 0, 1);
+                ImGui.Text("Only maters if downscale is 0");
+                ImGui.DragInt("Target height", ref TargetRenderHeight, 1f);
+                if (lastTargetHeight != TargetRenderHeight)
+                {
+                    _needsReset = true;
+                }
+                else if (mode == 1) { _needsReset = true; }
+                else if (mode == 0 && TargetRenderHeight != outH) { _needsReset = true; TargetRenderHeightNonH = TargetRenderHeight;}
                 ImGui.End();
 
                 ImGui.Begin("Camera");
