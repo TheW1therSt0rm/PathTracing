@@ -147,11 +147,11 @@ namespace Zirconium.UI
             _keyMap[Keys.D9] = ImGuiKey._9;
 
             // Function keys
-            _keyMap[Keys.F1] = ImGuiKey.F1;   _keyMap[Keys.F2] = ImGuiKey.F2;
-            _keyMap[Keys.F3] = ImGuiKey.F3;   _keyMap[Keys.F4] = ImGuiKey.F4;
-            _keyMap[Keys.F5] = ImGuiKey.F5;   _keyMap[Keys.F6] = ImGuiKey.F6;
-            _keyMap[Keys.F7] = ImGuiKey.F7;   _keyMap[Keys.F8] = ImGuiKey.F8;
-            _keyMap[Keys.F9] = ImGuiKey.F9;   _keyMap[Keys.F10] = ImGuiKey.F10;
+            _keyMap[Keys.F1] = ImGuiKey.F1; _keyMap[Keys.F2] = ImGuiKey.F2;
+            _keyMap[Keys.F3] = ImGuiKey.F3; _keyMap[Keys.F4] = ImGuiKey.F4;
+            _keyMap[Keys.F5] = ImGuiKey.F5; _keyMap[Keys.F6] = ImGuiKey.F6;
+            _keyMap[Keys.F7] = ImGuiKey.F7; _keyMap[Keys.F8] = ImGuiKey.F8;
+            _keyMap[Keys.F9] = ImGuiKey.F9; _keyMap[Keys.F10] = ImGuiKey.F10;
             _keyMap[Keys.F11] = ImGuiKey.F11; _keyMap[Keys.F12] = ImGuiKey.F12;
 
             // Punctuation (handy for text boxes / shortcuts)

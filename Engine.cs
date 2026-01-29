@@ -11,6 +11,7 @@ using Zirconium.Optimizations;
 using Zirconium.OBJ;
 using Zirconium.UI;
 using Zirconium.Types.BluePrints;
+using Zirconium.Engine;
 
 namespace Zirconium.Main
 {
@@ -33,6 +34,7 @@ namespace Zirconium.Main
         private Shader _tonemap = null!;
         private ImGuiController? _imgui;
         private float _imguiDelta;
+        public List<GameObject> SceneObjects = [];
 
         // HDR accumulation ping-pong
         private int _accumA, _accumB;   // rgba16f
@@ -165,7 +167,7 @@ namespace Zirconium.Main
 
         public Engine(Window win)
         {
-            _win = win;_win.TextInput += e => _imgui?.AddInputCharacter((uint)e.Unicode);
+            _win = win; _win.TextInput += e => _imgui?.AddInputCharacter((uint)e.Unicode);
             _mainThreadId = Environment.CurrentManagedThreadId;
             ThreadStart threadStarter1 = new(Init);
             ThreadManager.Add(threadStarter1, "Init");
@@ -548,7 +550,7 @@ namespace Zirconium.Main
                             colour = warnColor;
                             typeSuffix = "⚠ Warning:";
                             break;
-                        case ConsoleType.Error: 
+                        case ConsoleType.Error:
                             colour = errorColor;
                             typeSuffix = "⛔ Error:";
                             break;
@@ -1113,11 +1115,17 @@ namespace Zirconium.Main
                 new(new Vector3(3f,12f,7f), 3.0f, Vector3.Zero, 0.0f, Vector3.One, 1f)*/
             };
 
+            foreach (SphereGPU sphere in spheres)
+            {
+                GameObject obj = new(Types.Enums.GameObjectType.Sphere, "", sphere.PosRad.Xyz, Vector3.Zero, Vector3.One, sphere.ColSmo.Xyz, sphere.ColSmo.W, Vector3.Zero, 0f, sphere.AlphaIorAbsorb.X);
+                SceneObjects.Add(obj);
+            }
+
             int sphereGpuSize = Marshal.SizeOf<SphereGPU>();
 
             _numSpheres = spheres.Length;
 
-            
+
             // Upload to SSBOs
             GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _spheresSSbo);
             GL.BufferData(BufferTarget.ShaderStorageBuffer,
@@ -1151,11 +1159,16 @@ namespace Zirconium.Main
                 new(new Vector3(0f, 0.01f, 10f), Vector3.One, new Vector3(1.0f, 1.8f, 1.0f), 0.65f, Vector3.Zero, 0f, 0.1f)
             };
 
+            foreach (CubeGPU cube in cubes)
+            {
+                GameObject obj = new(Types.Enums.GameObjectType.Cube, "", cube.Pos.Xyz, Vector3.Zero, cube.Scale.Xyz, cube.ColSmo.Xyz, cube.ColSmo.W, Vector3.Zero, 0f, cube.AlphaIorAbsorb.X);
+                SceneObjects.Add(obj);
+            }
+
             int cubeGpuSize = Marshal.SizeOf<CubeGPU>();
 
             _numCubes = cubes.Length;
 
-            
             // Upload to SSBOs
             GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _cubesSSbo);
             GL.BufferData(BufferTarget.ShaderStorageBuffer,
@@ -1168,8 +1181,11 @@ namespace Zirconium.Main
 
         public void ContstructMesh(string path, Vector3 position, Vector3 size, Vector3 rotation, Vector3 colour, float smoothness, Vector3 emission, float emissionStrength, float alpha = 1f)
         {
-            ObjLoader.Load(out List<TriangleGPU> tris, path, position, rotation, size, colour, smoothness, emission, emissionStrength, alpha);
-            UploadMesh([.. tris]);
+            GameObject obj = new(Types.Enums.GameObjectType.Mesh, path, position, rotation, size, colour, smoothness, emission, emissionStrength, alpha);
+            SceneObjects.Add(obj);
+            if (obj.Send.Count == 0 || obj.Send[0].GetType() != typeof(TriangleGPU))
+                return;
+            UploadMesh([.. obj.Send.Cast<TriangleGPU>()]);
         }
 
         public void ContstructMeshAsync(string path, Vector3 position, Vector3 size, Vector3 rotation, Vector3 colour, float smoothness, Vector3 emission, float emissionStrength, float alpha = 1f)

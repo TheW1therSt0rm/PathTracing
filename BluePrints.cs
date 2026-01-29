@@ -3,5 +3,5 @@ using OpenTK.Mathematics;
 
 namespace Zirconium.Types.BluePrints
 {
-    public interface IGpuType {}
+    public interface IGpuType { }
 }

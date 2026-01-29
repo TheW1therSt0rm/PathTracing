@@ -7,7 +7,7 @@ namespace Zirconium.Optimizations
     {
         public static Dictionary<string, Thread> threads = [];
         private static readonly ConcurrentQueue<Action> _mainThreadActions = new();
-        
+
         public static void Add(ThreadStart threadStarter, string name)
         {
             threads.Add(name, new(threadStarter));

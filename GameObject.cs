@@ -1,4 +1,3 @@
-using Zirconium.Optimizations;
 using Zirconium.OBJ;
 using Zirconium.Types.Enums;
 using Zirconium.Types.BluePrints;
@@ -25,7 +24,7 @@ namespace Zirconium.Engine
                     Send.Add(new CubeGPU(pos, size, albedo, smoothness, emission, emissionStrength, alpha, ior, absorb));
                     break;
                 case GameObjectType.Sphere:
-                    Send.Add(new SphereGPU());
+                    Send.Add(new SphereGPU(pos, size.X, albedo, smoothness, emission, emissionStrength, alpha, ior, absorb));
                     break;
                 case GameObjectType.Mesh:
                     List<TriangleGPU> tris = [];
