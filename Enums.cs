@@ -4,6 +4,7 @@ namespace Zirconium.Types.Enums
     {
         Sphere,
         Cube,
-        Mesh
+        Mesh,
+        Empty
     }
 }

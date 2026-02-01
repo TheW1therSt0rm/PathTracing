@@ -43,7 +43,10 @@ namespace Zirconium.UI
             io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
             io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;      // enable if you want docking
             io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;    // only enable if you also implement a platform backend
+            io.ConfigFlags |= ImGuiConfigFlags.DpiEnableScaleViewports;
+            io.ConfigFlags |= ImGuiConfigFlags.DpiEnableScaleFonts;
 
+            io.BackendFlags |= ImGuiBackendFlags.RendererHasViewports;
             io.BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset;
 
             ImGui.StyleColorsDark();

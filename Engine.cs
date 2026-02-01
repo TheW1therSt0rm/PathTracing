@@ -34,13 +34,19 @@ namespace Zirconium.Main
         private Shader _tonemap = null!;
         private ImGuiController? _imgui;
         private float _imguiDelta;
+        private Dictionary<GameObject, int> sceneObjectIds = [];
+        private List<GameObject> toRemove = [];
+        public GameObject? SelectedGameObject = null;
         public List<GameObject> SceneObjects = [];
+        private int DebugMode = 0;
 
         // HDR accumulation ping-pong
         private int _accumA, _accumB;   // rgba16f
         private int _readTex, _writeTex;
 
         // Tonemapped output
+        private int _normalTex;
+        private int _depthTex;
         private int _ldrTex;            // rgba8
         private int _ldrFbo;            // attach _ldrTex, then BlitFramebuffer -> screen
 
@@ -59,6 +65,8 @@ namespace Zirconium.Main
         private int _numTris;
         private int _numBvhNodes;
         private int mode = 0;
+        private int pps = 3;
+        private int maxBounces = 5;
 
         private float oldTime = 0f;
         private float dt = 1f;
@@ -71,6 +79,8 @@ namespace Zirconium.Main
         private int _frame;
         private bool _needsReset = true;
         private bool _accumalation = true;
+        private bool _defaultSpheresSeeded;
+        private bool _defaultCubesSeeded;
 
         // camera
         private Vector3 _camPos = new(0f, 1.2f, -5.5f);
@@ -90,7 +100,7 @@ namespace Zirconium.Main
         private static readonly Vector3 SunDir = new Vector3(0.6f, 0.6f, 1.0f).Normalized();
         private static readonly Vector3 SunColor = new(0.76862745f, 0.69019608f, 0.16862745f);
         private const float SunIntensity = 30.0f;
-        private const float SunAngularRad = 0.00465f;
+        private const float SunAngularRad = 0.27f;
 
         private static readonly int TriangleGpuSize = Marshal.SizeOf<TriangleGPU>();
         private static readonly int BvhNodeGpuSize = Marshal.SizeOf<BVHNodeGPU>();
@@ -131,7 +141,7 @@ namespace Zirconium.Main
         private string _consoleFilter = string.Empty;
 
         private readonly List<AssetEntry> _assets = [];
-        private string _assetsRoot = ".";
+        private string _assetsRoot = @".\assets";
         private string _assetsFilter = string.Empty;
         private bool _assetsShowAll = false;
         private int _selectedAssetIndex = -1;
@@ -185,6 +195,10 @@ namespace Zirconium.Main
             ThreadManager.Add(threadStarter7, "UploadSpheres");
             ThreadStart threadStarter8 = new(UploadCubes);
             ThreadManager.Add(threadStarter8, "UploadCubes");
+            ThreadStart threadStarter9 = new(RefreshAssets);
+            ThreadManager.Add(threadStarter9, "RefreshAssets");
+            ThreadStart threadStarter10 = new(EnsureDefaultSpheres);
+            ThreadManager.Add(threadStarter10, "EnsureDefaultSpheres");
             CommentLog($"GL Vendor  : {GL.GetString(StringName.Vendor)}");
             CommentLog($"GL Renderer: {GL.GetString(StringName.Renderer)}");
             CommentLog($"GL Version : {GL.GetString(StringName.Version)}");
@@ -232,6 +246,8 @@ namespace Zirconium.Main
             GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 3, _bvhSsbo);
 
             // Scene: spheres + cubes + demo meshes
+            EnsureDefaultSpheres();
+            EnsureDefaultCubes();
             UploadSpheres();
             UploadCubes();
 
@@ -266,6 +282,8 @@ namespace Zirconium.Main
             _accumA = CreateTexRgba16f(_renderWidth, _renderHeight);
             _accumB = CreateTexRgba16f(_renderWidth, _renderHeight);
             _ldrTex = CreateTexRgba8(w, h);
+            _depthTex = CreateTexR32f(_renderWidth, _renderHeight);
+            _normalTex = CreateTexRgba16f(_renderWidth, _renderHeight);
 
             _readTex = _accumA;
             _writeTex = _accumB;
@@ -397,9 +415,14 @@ namespace Zirconium.Main
             _rt.Set("uNumCubes", _numCubes);
             _rt.Set("uNumTris", _numTris);
             _rt.Set("uNumBvhNodes", _numBvhNodes);
+            _rt.Set("uMaxBounces", maxBounces);
+            _rt.Set("uPPS", pps);
+            _rt.Set("uDebugMode", DebugMode);
 
             GL.BindImageTexture(0, _readTex, 0, false, 0, TextureAccess.ReadOnly, SizedInternalFormat.Rgba16f);
             GL.BindImageTexture(1, _writeTex, 0, false, 0, TextureAccess.WriteOnly, SizedInternalFormat.Rgba16f);
+            GL.BindImageTexture(2, _depthTex, 0, false, 0, TextureAccess.WriteOnly, SizedInternalFormat.R32f);
+            GL.BindImageTexture(3, _normalTex, 0, false, 0, TextureAccess.WriteOnly, SizedInternalFormat.Rgba16f);
 
             GL.DispatchCompute((w + 7) / 8, (h + 7) / 8, 1);
             GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit | MemoryBarrierFlags.TextureFetchBarrierBit);
@@ -409,10 +432,10 @@ namespace Zirconium.Main
             _tonemap.Set("uSize", new Vector2i(w, h));
             _tonemap.Set("uWinSize", new Vector2i(outW, outH));
 
-            GL.ActiveTexture(TextureUnit.Texture0);
-            GL.BindTexture(TextureTarget.Texture2D, _writeTex);
-
+            GL.BindImageTexture(0, _writeTex, 0, false, 0, TextureAccess.ReadOnly, SizedInternalFormat.Rgba16f);
             GL.BindImageTexture(1, _ldrTex, 0, false, 0, TextureAccess.WriteOnly, SizedInternalFormat.Rgba8);
+            GL.BindImageTexture(2, _normalTex, 0, false, 0, TextureAccess.ReadOnly, SizedInternalFormat.Rgba16f);
+            GL.BindImageTexture(3, _depthTex, 0, false, 0, TextureAccess.ReadOnly, SizedInternalFormat.R32f);
 
             GL.DispatchCompute((outW + 7) / 8, (outH + 7) / 8, 1);
             GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit | MemoryBarrierFlags.FramebufferBarrierBit);
@@ -434,6 +457,11 @@ namespace Zirconium.Main
                 ImGui.BeginDisabled(mode == 1);
                 int uiTargetHeight = TargetRenderHeightNonH;
                 ImGui.DragInt("Target height", ref uiTargetHeight, 1f, 1);
+                ImGui.DragInt("Rays per pixel", ref pps, 1f, 1, 10);
+                ImGui.DragInt("Max bounces", ref maxBounces, 1f, 1, 30);
+                int lastDebugMode = DebugMode;
+                ImGui.DragInt("Debug mode", ref DebugMode, 1f, 0, 3);
+                _needsReset |= DebugMode != lastDebugMode;
                 ImGui.EndDisabled();
                 if (uiTargetHeight < 1) uiTargetHeight = 1;
                 if (TargetRenderHeightNonH != uiTargetHeight)
@@ -707,7 +735,119 @@ namespace Zirconium.Main
                 }
 
                 ImGui.End();
-                _needsReset = camPos != _camPos || pitch != _pitch || yaw != _yaw;
+
+                ImGui.Begin("Hierarchy");
+                if (ImGui.Button("Add Empty Object"))
+                {
+                    SceneObjects.Add(new GameObject(null, Types.Enums.GameObjectType.Empty, "Empty Object", null, Vector3.Zero, Vector3.Zero, Vector3.One, Vector3.One, 0f, Vector3.Zero, 0f, 1f));
+                }
+
+                for (int i = 0; i < SceneObjects.Count; i++)
+                {
+                    var obj = SceneObjects[i];
+                    if (ImGui.TreeNode(obj.Name + "###" + obj.GetHashCode()))
+                    {
+                        obj.id = i;
+                        SelectedGameObject = obj;
+                        ImGui.TreePop();
+                    }
+                }
+                foreach (var obj in toRemove)
+                {
+                    SceneObjects.Remove(obj);
+                }
+                if (toRemove.Count > 0)
+                {
+                    UploadCubes();
+                    UploadSpheres();
+                    UploadAllMeshesToGpu();
+                }
+                toRemove.Clear();
+                ImGui.End();
+
+                ImGui.Begin("Inspector");
+                if (SelectedGameObject != null)
+                {
+                    ImGui.Text($"Name: {SelectedGameObject.Name}");
+                    ImGui.Text($"Type: {SelectedGameObject._type}");
+                    ImGui.Separator();
+
+                    var pos = new System.Numerics.Vector3(SelectedGameObject.Position.X, SelectedGameObject.Position.Y, SelectedGameObject.Position.Z);
+                    ImGui.DragFloat3("Position", ref pos, 0.1f);
+
+                    var rot = new System.Numerics.Vector3(SelectedGameObject.Rotation.X, SelectedGameObject.Rotation.Y, SelectedGameObject.Rotation.Z);
+                    ImGui.DragFloat3("Rotation", ref rot, 0.5f);
+
+                    var scale = new System.Numerics.Vector3(SelectedGameObject.Scale.X, SelectedGameObject.Scale.Y, SelectedGameObject.Scale.Z);
+                    ImGui.DragFloat3("Scale", ref scale, 0.05f);
+                    
+                    if (ImGui.Button("Delete Object"))
+                    {
+                        toRemove.Add(SelectedGameObject);
+                        SelectedGameObject = null;
+                    }
+
+                    Vector3 position = new(pos.X, pos.Y, pos.Z);
+                    Vector3 rotation = new(rot.X, rot.Y, rot.Z);
+                    Vector3 size = new(scale.X, scale.Y, scale.Z);
+
+                    switch (SelectedGameObject?._type)
+                    {
+                        default:
+                            break;
+                        case Types.Enums.GameObjectType.Sphere:
+                            SelectedGameObject.Position = position;
+                            SelectedGameObject.Rotation = rotation;
+                            SelectedGameObject.Scale = size;
+                            if (SelectedGameObject.Send.Count > 0 && SelectedGameObject.Send[0] is SphereGPU sphere)
+                            {
+                                SelectedGameObject.Send[0] = new SphereGPU(
+                                    position,
+                                    size.X,
+                                    sphere.ColSmo.Xyz,
+                                    sphere.ColSmo.W,
+                                    sphere.EmiEmi.Xyz,
+                                    sphere.EmiEmi.W,
+                                    sphere.AlphaIorAbsorb.X,
+                                    sphere.AlphaIorAbsorb.Y,
+                                    sphere.AlphaIorAbsorb.Z);
+                            }
+                            break;
+                        case Types.Enums.GameObjectType.Cube:
+                            SelectedGameObject.Position = position;
+                            SelectedGameObject.Rotation = rotation;
+                            SelectedGameObject.Scale = size;
+                            if (SelectedGameObject.Send.Count > 0 && SelectedGameObject.Send[0] is CubeGPU cube)
+                            {
+                                SelectedGameObject.Send[0] = new CubeGPU(
+                                    position,
+                                    size,
+                                    cube.ColSmo.Xyz,
+                                    cube.ColSmo.W,
+                                    cube.EmiEmi.Xyz,
+                                    cube.EmiEmi.W,
+                                    cube.AlphaIorAbsorb.X,
+                                    cube.AlphaIorAbsorb.Y,
+                                    cube.AlphaIorAbsorb.Z);
+                            }
+                            break;
+                    }
+
+                    if (SelectedGameObject?.id.HasValue == true)
+                    {
+                        SceneObjects[SelectedGameObject.id.Value] = SelectedGameObject;
+                    }
+                    UploadCubes();
+                    UploadSpheres();
+                    UploadAllMeshesToGpu();
+                }
+                else
+                {
+                    ImGui.Text("No object selected.");
+                }
+                ImGui.End();
+
+                _needsReset = camPos != _camPos || pitch != _pitch || yaw != _yaw || _needsReset;
 
                 if (hovered && clicked && !_win.MouseCaptured)
                     _win.SetMouseCapture(true);
@@ -941,6 +1081,8 @@ namespace Zirconium.Main
             _frame = 0;
             _readTex = _accumA;
             _writeTex = _accumB;
+            _depthTex = CreateTexR32f(_renderWidth, _renderHeight);
+            _normalTex = CreateTexRgba16f(_renderWidth, _renderHeight);
 
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _clearFbo);
             GL.ClearColor(0, 0, 0, 1);
@@ -994,6 +1136,19 @@ namespace Zirconium.Main
             return tex;
         }
 
+        private static int CreateTexR32f(int w, int h)
+        {
+            int tex = GL.GenTexture();
+            GL.BindTexture(TextureTarget.Texture2D, tex);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R32f, w, h, 0, PixelFormat.Red, PixelType.Float, IntPtr.Zero);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            return tex;
+        }
+
         private static int ChooseIntegerScale(int height, int targetHeight)
         {
             return Math.Max(1, (int)MathF.Floor(height / (float)targetHeight));
@@ -1001,6 +1156,12 @@ namespace Zirconium.Main
 
         private void RefreshAssets()
         {
+            if (!IsMainThread)
+            {
+                ThreadManager.EnqueueMainThread(RefreshAssets);
+                return;
+            }
+
             _assets.Clear();
             _selectedAssetIndex = -1;
 
@@ -1089,13 +1250,37 @@ namespace Zirconium.Main
         // =========================
         // Scene: spheres
         // =========================
-        [StructLayout(LayoutKind.Sequential)]
-        public readonly struct SphereGPU(Vector3 pos, float radius, Vector3 albedo, float smooth, Vector3 emission, float emissionStrength, float alpha, float ior = 1.0f, float absorb = 0.0f) : IGpuType
+        public readonly struct SphereGPU(Vector3 pos, float radius, Vector3 albedo, float smooth, Vector3 emission, float emissionStrength, float alpha, float ior = 1.0f, float absorb = 0.0f) : IGpuType, IEquatable<SphereGPU>
         {
             public readonly Vector4 PosRad = new(pos.X, pos.Y, pos.Z, radius);
             public readonly Vector4 ColSmo = new(albedo.X, albedo.Y, albedo.Z, smooth);
             public readonly Vector4 EmiEmi = new(emission.X, emission.Y, emission.Z, emissionStrength);
             public readonly Vector4 AlphaIorAbsorb = new(alpha, ior, absorb, 0f);
+
+            public bool Equals(SphereGPU other)
+            {
+                return PosRad == other.PosRad && ColSmo == other.ColSmo && EmiEmi == other.EmiEmi && AlphaIorAbsorb == other.AlphaIorAbsorb;
+            }
+
+            public override bool Equals(object? obj)
+            {
+                return obj is SphereGPU other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(PosRad, ColSmo, EmiEmi, AlphaIorAbsorb);
+            }
+
+            public static bool operator ==(SphereGPU left, SphereGPU right)
+            {
+                return left.Equals(right);
+            }
+
+            public static bool operator !=(SphereGPU left, SphereGPU right)
+            {
+                return !left.Equals(right);
+            }
         }
 
         private void UploadSpheres()
@@ -1105,6 +1290,40 @@ namespace Zirconium.Main
                 ThreadManager.EnqueueMainThread(UploadSpheres);
                 return;
             }
+
+            var spheres = new List<SphereGPU>();
+            foreach (var obj in SceneObjects)
+            {
+                if (obj._type != Types.Enums.GameObjectType.Sphere)
+                    continue;
+                spheres.Add((SphereGPU)obj.Send[0]);
+            }
+
+            int sphereGpuSize = Marshal.SizeOf<SphereGPU>();
+
+            _numSpheres = spheres.Count;
+
+
+            // Upload to SSBOs
+            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _spheresSSbo);
+            GL.BufferData(BufferTarget.ShaderStorageBuffer,
+                _numSpheres * sphereGpuSize,
+                spheres.ToArray(),
+                BufferUsageHint.StaticDraw);
+
+            _needsReset = true;
+        }
+
+        private void EnsureDefaultSpheres()
+        {
+            if (!IsMainThread)
+            {
+                ThreadManager.EnqueueMainThread(EnsureDefaultSpheres);
+                return;
+            }
+
+            if (_defaultSpheresSeeded)
+                return;
 
             var spheres = new SphereGPU[]
             {
@@ -1117,23 +1336,12 @@ namespace Zirconium.Main
 
             foreach (SphereGPU sphere in spheres)
             {
-                GameObject obj = new(Types.Enums.GameObjectType.Sphere, "", sphere.PosRad.Xyz, Vector3.Zero, Vector3.One, sphere.ColSmo.Xyz, sphere.ColSmo.W, Vector3.Zero, 0f, sphere.AlphaIorAbsorb.X);
+                float radius = sphere.PosRad.W;
+                GameObject obj = new(null, Types.Enums.GameObjectType.Sphere, "Sphere", "", sphere.PosRad.Xyz, Vector3.Zero, new Vector3(radius), sphere.ColSmo.Xyz, sphere.ColSmo.W, Vector3.Zero, 0f, sphere.AlphaIorAbsorb.X);
                 SceneObjects.Add(obj);
             }
 
-            int sphereGpuSize = Marshal.SizeOf<SphereGPU>();
-
-            _numSpheres = spheres.Length;
-
-
-            // Upload to SSBOs
-            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _spheresSSbo);
-            GL.BufferData(BufferTarget.ShaderStorageBuffer,
-                _numSpheres * sphereGpuSize,
-                spheres,
-                BufferUsageHint.StaticDraw);
-
-            _needsReset = true;
+            _defaultSpheresSeeded = true;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -1154,6 +1362,33 @@ namespace Zirconium.Main
                 return;
             }
 
+            var cubes = new List<CubeGPU>();
+            foreach (var obj in SceneObjects)
+            {
+                if (obj._type != Types.Enums.GameObjectType.Cube)
+                    continue;
+                cubes.Add((CubeGPU)obj.Send[0]);
+            }
+
+            int cubeGpuSize = Marshal.SizeOf<CubeGPU>();
+
+            _numCubes = cubes.Count;
+
+            // Upload to SSBOs
+            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _cubesSSbo);
+            GL.BufferData(BufferTarget.ShaderStorageBuffer,
+                _numCubes * cubeGpuSize,
+                cubes.ToArray(),
+                BufferUsageHint.StaticDraw);
+
+            _needsReset = true;
+        }
+
+        private void EnsureDefaultCubes()
+        {
+            if (_defaultCubesSeeded)
+                return;
+
             var cubes = new CubeGPU[]
             {
                 new(new Vector3(0f, 0.01f, 10f), Vector3.One, new Vector3(1.0f, 1.8f, 1.0f), 0.65f, Vector3.Zero, 0f, 0.1f)
@@ -1161,27 +1396,16 @@ namespace Zirconium.Main
 
             foreach (CubeGPU cube in cubes)
             {
-                GameObject obj = new(Types.Enums.GameObjectType.Cube, "", cube.Pos.Xyz, Vector3.Zero, cube.Scale.Xyz, cube.ColSmo.Xyz, cube.ColSmo.W, Vector3.Zero, 0f, cube.AlphaIorAbsorb.X);
+                GameObject obj = new(null, Types.Enums.GameObjectType.Cube, "Cube", "", cube.Pos.Xyz, Vector3.Zero, cube.Scale.Xyz, cube.ColSmo.Xyz, cube.ColSmo.W, Vector3.Zero, 0f, cube.AlphaIorAbsorb.X);
                 SceneObjects.Add(obj);
             }
 
-            int cubeGpuSize = Marshal.SizeOf<CubeGPU>();
-
-            _numCubes = cubes.Length;
-
-            // Upload to SSBOs
-            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _cubesSSbo);
-            GL.BufferData(BufferTarget.ShaderStorageBuffer,
-                _numCubes * cubeGpuSize,
-                cubes,
-                BufferUsageHint.StaticDraw);
-
-            _needsReset = true;
+            _defaultCubesSeeded = true;
         }
 
         public void ContstructMesh(string path, Vector3 position, Vector3 size, Vector3 rotation, Vector3 colour, float smoothness, Vector3 emission, float emissionStrength, float alpha = 1f)
         {
-            GameObject obj = new(Types.Enums.GameObjectType.Mesh, path, position, rotation, size, colour, smoothness, emission, emissionStrength, alpha);
+            GameObject obj = new(null, Types.Enums.GameObjectType.Mesh, path, path, position, rotation, size, colour, smoothness, emission, emissionStrength, alpha);
             SceneObjects.Add(obj);
             if (obj.Send.Count == 0 || obj.Send[0].GetType() != typeof(TriangleGPU))
                 return;

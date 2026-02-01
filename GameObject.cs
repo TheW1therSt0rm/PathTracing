@@ -11,11 +11,22 @@ namespace Zirconium.Engine
     public class GameObject
     {
         public GameObjectType _type;
+        public GameObject? parent;
+        public int? id;
+        public string Name = "GameObject";
+        public Vector3 Position;
+        public Vector3 Rotation;
+        public Vector3 Scale;
         public List<IGpuType> Send = [];
 
-        public GameObject(GameObjectType type, string? path, Vector3 pos, Vector3 rot, Vector3 size, Vector3 albedo, float smoothness, Vector3 emission, float emissionStrength, float alpha, float ior = 1.0f, float absorb = 0.0f)
+        public GameObject(GameObject? parent, GameObjectType type, string name, string? path, Vector3 pos, Vector3 rot, Vector3 size, Vector3 albedo, float smoothness, Vector3 emission, float emissionStrength, float alpha, float ior = 1.0f, float absorb = 0.0f)
         {
+            this.parent = parent;
             _type = type;
+            Name = name;
+            Position = pos;
+            Rotation = rot;
+            Scale = size;
             switch (_type)
             {
                 default:

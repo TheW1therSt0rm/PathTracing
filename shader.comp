@@ -4,11 +4,16 @@ layout(local_size_x = 8, local_size_y = 8) in;
 // output + previous accumulation (linear HDR)
 layout(rgba16f, binding = 0) readonly  uniform image2D uPrevAccum;
 layout(rgba16f, binding = 1) writeonly uniform image2D uOutAccum;
+layout(r32f,    binding = 2) uniform image2D uDepth;
+layout(rgba16f,    binding = 3) uniform image2D uNormal;
 
 uniform int  uFrame;
 uniform float uAperture;   // lens radius in WORLD units (try 0.02)
 uniform float uFocusDist;  // distance in WORLD units (try 10.0)
 uniform ivec2 uSize; // trace resolution
+uniform int uPPS;  // rays per pixel (1, 4, 16, 64, ...)
+uniform int uMaxBounces;
+uniform int uDebugMode; // 0=off, 1=depth, 2=normals 3=num intersection tests
 
 uniform vec3 camForward;
 uniform vec3 camRight;
@@ -468,11 +473,11 @@ vec3 Environment(Ray r)
     float t = pow(smoothstep(0, 0.4, r.d.y), 0.35);
     vec3 sky = lerpXYZ(vec3(0.6,0.8,1.0), vec3(0.1,0.2,0.4), t);
 
-    vec3 sunDir = -normalize(uSunDir); // uSunDir points from scene to sun
-    float cosAng = dot(r.d, sunDir);
-    float sun = smoothstep(cos(uSunAngularRad), 1.0, cosAng) * uSunIntensity;
+    float sun = pow(max(0, dot(r.d, -normalize(vec3(1.0, 1.0, 0.0)))), 200.0) * uSunIntensity;
+    float a = smoothstep(-0.1, 0.0, r.d.y);
+    float sunMask = a >= 1.0 ? 1.0 : 0.0;
 
-    return sky + sun * uSunColor;
+    return lerpXYZ(vec3(0.2, 0.1, 0.8), sky, a) + sun * sunMask;// * uSunColor;
 }
 
 /*
@@ -496,17 +501,35 @@ vec3 Trace(Ray r, inout uint rng)
     bool inGlass = false;
     vec3 sA = vec3(0.0);
 
-    const int MAX_BOUNCES = 8;
-
-    for (int bounce = 0; bounce < MAX_BOUNCES; bounce++)
+    int tests = 0;
+    for (int bounce = 0; bounce <= uMaxBounces; bounce++)
     {
-        int tests = 0;
         HitInfo hit = RayScene(r, false, tests);
 
         if (!hit.didHit)
         {
             L += Environment(r) * T;
             break;
+        }
+        if (tests > 10000)
+        {
+            // too many intersection tests: likely no BVH
+            L += vec3(10,0,10) * T;
+            break;
+        }
+        if (hit.t <= 1e-4)
+        {
+            // avoid self-intersection
+            L += vec3(0.0);
+            break;
+        }
+        if (bounce == 0)
+        {
+            // store depth and normal on first hit
+            float depth = length(hit.p - r.o);
+            vec3 norm = 0.5 * (hit.n + vec3(1.0));
+            imageStore(uDepth, ivec2(gl_GlobalInvocationID.xy), vec4(depth, depth, depth, 1.0));
+            imageStore(uNormal, ivec2(gl_GlobalInvocationID.xy), vec4(norm, 1.0));
         }
 
         // apply absorption for the distance traveled since last event
@@ -604,7 +627,14 @@ vec3 Trace(Ray r, inout uint rng)
         T *= hit.m.col;
     }
 
-    return L;
+    vec3 finalColour = vec3(float(tests) / 30.0);
+    finalColour = tests > 29 ? vec3(1.0, 0.0, 0.0) : finalColour;
+    vec3 col = uDebugMode == 1 ? imageLoad(uDepth, ivec2(gl_GlobalInvocationID.xy)).rrr :
+               uDebugMode == 2 ? imageLoad(uNormal, ivec2(gl_GlobalInvocationID.xy)).rgb :
+               uDebugMode == 3 ? finalColour :
+               L;
+
+    return col;
 }
 
 const float PI = 3.1415;
@@ -636,7 +666,7 @@ void main()
     vec3 viewPoint = (camLocalToWorldMatrix * vec4(viewPointLocal, 1.0)).xyz;
 
     vec3 cur = vec3(0.0);
-    for (int i = 0; i < 1; i++)
+    for (int i = 0; i < uPPS; i++)
     {
         // --- pixel jitter (antialiasing) ---
         vec2 jitter = (vec2(Ran(rng), Ran(rng)) - 0.5) / vec2(uSize);
@@ -663,7 +693,7 @@ void main()
 
         cur += Trace(r, rng);
     }
-    cur /= 1.0;
+    cur /= float(uPPS);
 
     vec3 prev = imageLoad(uPrevAccum, pix).rgb;
 

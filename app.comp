@@ -7,7 +7,9 @@ uniform ivec2 uSize;
 uniform ivec2 uWinSize;
 
 // HDR input (sampled)
-layout(binding = 0) uniform sampler2D uTex;
+layout(rgba16f, binding = 0) readonly uniform image2D uTex;
+layout(rgba16f, binding = 2) readonly uniform image2D uNormal;
+layout(r32f, binding = 3) readonly uniform image2D uDepth;
 
 // LDR output (written)
 layout(rgba8, binding = 1) writeonly uniform image2D uOut;
@@ -15,13 +17,61 @@ layout(rgba8, binding = 1) writeonly uniform image2D uOut;
 vec3 tonemap(vec3 col) { return col / (vec3(1.0) + col); }
 vec3 gamma(vec3 col) { return pow(col, vec3(0.454545455)); }
 
+ivec2 getSrcCoord(ivec2 pix)
+{
+    ivec2 winSize = (uWinSize.x > 0 && uWinSize.y > 0) ? uWinSize : uSize;
+    vec2 uv = (vec2(pix) + 0.5) / vec2(winSize);
+    vec2 src = uv * vec2(uSize);
+    return ivec2(clamp(floor(src), vec2(0.0), vec2(uSize - 1)));
+}
+
+vec3 getCol(ivec2 pix)
+{
+    return imageLoad(uTex, getSrcCoord(pix)).rgb;
+}
+
+vec3 getNorm(ivec2 pix)
+{
+    return imageLoad(uNormal, getSrcCoord(pix)).rgb;
+}
+
+float getDepth(ivec2 pix)
+{
+    return imageLoad(uDepth, getSrcCoord(pix)).r;
+}
+
+ivec2 offsets[25] = ivec2[](
+    ivec2(-2,  2), ivec2(-1,  2), ivec2(0,  2), ivec2(1,  2), ivec2(2,  2),
+    ivec2(-2,  1), ivec2(-1,  1), ivec2(0,  1), ivec2(1,  1), ivec2(2,  1),
+    ivec2(-2,  0), ivec2(-1,  0), ivec2(0,  0), ivec2(1,  0), ivec2(2,  0),
+    ivec2(-2, -1), ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(2, -1),
+    ivec2(-2, -2), ivec2(-1, -2), ivec2(0, -2), ivec2(1, -2), ivec2(2, -2)
+);
+
+vec3 retCol(ivec2 pix)
+{
+    vec3 col = vec3(0.0);
+    float div = 0.0;
+    vec3 norm = getNorm(pix);
+    float depth = getDepth(pix);
+    for (int i = 0; i < 25; i++)
+    {
+        ivec2 offset = offsets[i];
+        if (norm != getNorm(pix + offset)) continue;
+        if (depth != getDepth(pix + offset)) continue;
+        col += getCol(pix + offset);
+        div += 1.0;
+    }
+    col /= div;
+    return col;
+}
+
 void main()
 {
     ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
-    if (pix.x >= uWinSize.x || pix.y >= uWinSize.y) return;
+    ivec2 winSize = (uWinSize.x > 0 && uWinSize.y > 0) ? uWinSize : uSize;
+    if (pix.x >= winSize.x || pix.y >= winSize.y) return;
 
-    // Pixel center UV in output space
-    vec2 uv = (vec2(pix) + 0.5) / vec2(uWinSize);
-    imageStore(uOut, pix, vec4(gamma(tonemap(texture(uTex, uv).rgb)), 1.0));
+    imageStore(uOut, pix, vec4(gamma(tonemap(retCol(pix))), 1.0));
 }
 
