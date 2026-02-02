@@ -34,6 +34,8 @@ namespace Zirconium.Main
         private Shader _tonemap = null!;
         private ImGuiController? _imgui;
         private float _imguiDelta;
+        private bool enableImGui = true;
+        private bool toggledImGui = false;
         private Dictionary<GameObject, int> sceneObjectIds = [];
         private List<GameObject> toRemove = [];
         public GameObject? SelectedGameObject = null;
@@ -311,7 +313,20 @@ namespace Zirconium.Main
             oldTime = now;
             _imguiDelta = dt;
 
-            if (_imgui != null)
+            if (_win.KeyboardState.IsKeyDown(Keys.LeftControl) && _win.KeyboardState.IsKeyPressed(Keys.I))
+            {
+                if (!toggledImGui)
+                {
+                    enableImGui = !enableImGui;
+                    toggledImGui = true;
+                }
+            }
+            else
+            {
+                toggledImGui = false;
+            }
+
+            if (_imgui != null && enableImGui)
             {
                 _imgui.Update(_win, _imguiDelta);
             }
@@ -337,6 +352,7 @@ namespace Zirconium.Main
             {
                 _needsReset = true;
             }
+
 
             UpdateBasisIfNeeded();
             var fwd = _camForward;
@@ -440,7 +456,11 @@ namespace Zirconium.Main
             GL.DispatchCompute((outW + 7) / 8, (outH + 7) / 8, 1);
             GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit | MemoryBarrierFlags.FramebufferBarrierBit);
 
-            if (_imgui != null && _imgui.FrameBegun)
+            // PASS 3: blit _ldrTex to screen
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _ldrFbo);
+            GL.BlitFramebuffer(0, 0, outW, outH, 0, 0, outW, outH, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Nearest);
+
+            if (_imgui != null && _imgui.FrameBegun && enableImGui)
             {
                 int lastTargetHeight = TargetRenderHeightNonH;
                 int lastMode = mode;

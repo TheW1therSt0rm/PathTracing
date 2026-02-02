@@ -50,5 +50,34 @@ namespace Zirconium.Engine
                     break;
             }
         }
+
+        public void Update(Vector3 newPos, Vector3 newRot, Vector3 newScale)
+        {
+            if (_type != GameObjectType.Mesh) return;
+            Vector3 deltaRot = newRot - Rotation;
+            Matrix4 rotMatrix = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(deltaRot.X)) * Matrix4.CreateRotationY(MathHelper.DegreesToRadians(deltaRot.Y)) * Matrix4.CreateRotationZ(MathHelper.DegreesToRadians(deltaRot.Z));
+            foreach (IGpuType gpu in Send)
+            {
+                TriangleGPU tri = (TriangleGPU)gpu;
+                tri.V0 -= new Vector4(Position, 0);
+                tri.V0 /= new Vector4(Scale, 1);
+                tri.V0 *= rotMatrix;
+                tri.V0 *= new Vector4(newScale, 1);
+                tri.V1 -= new Vector4(Position, 0);
+                tri.V1 /= new Vector4(Scale, 1);
+                tri.V1 *= rotMatrix;
+                tri.V1 *= new Vector4(newScale, 1);
+                tri.V2 -= new Vector4(Position, 0);
+                tri.V2 /= new Vector4(Scale, 1);
+                tri.V2 *= rotMatrix;
+                tri.V2 *= new Vector4(newScale, 1);
+                tri.V0 += new Vector4(newPos, 0);
+                tri.V1 += new Vector4(newPos, 0);
+                tri.V2 += new Vector4(newPos, 0);
+            }
+            Position = newPos;
+            Rotation = newRot;
+            Scale = newScale;
+        }
     }
 }
