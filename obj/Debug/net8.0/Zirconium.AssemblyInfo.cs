@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Zirconium")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f73a35abb15a53738d9a9591454092ba396e9392")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+eee24ed538eb2424cd5845c32ee2372de73fad6b")]
 [assembly: System.Reflection.AssemblyProductAttribute("Zirconium")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Zirconium")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

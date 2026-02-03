@@ -40,7 +40,10 @@ namespace Zirconium.Main
         private List<GameObject> toRemove = [];
         public GameObject? SelectedGameObject = null;
         public List<GameObject> SceneObjects = [];
-        private int DebugMode = 0;
+        private int ColourMode = 0;
+        private int DepthMode = 0;
+        private int NormalMode = 0;
+        private int TestsMode = 0;
 
         // HDR accumulation ping-pong
         private int _accumA, _accumB;   // rgba16f
@@ -433,7 +436,10 @@ namespace Zirconium.Main
             _rt.Set("uNumBvhNodes", _numBvhNodes);
             _rt.Set("uMaxBounces", maxBounces);
             _rt.Set("uPPS", pps);
-            _rt.Set("uDebugMode", DebugMode);
+            _rt.Set("uColourMode", ColourMode);
+            _rt.Set("uDepthMode", DepthMode);
+            _rt.Set("uNormalMode", NormalMode);
+            _rt.Set("uTestsMode", TestsMode);
 
             GL.BindImageTexture(0, _readTex, 0, false, 0, TextureAccess.ReadOnly, SizedInternalFormat.Rgba16f);
             GL.BindImageTexture(1, _writeTex, 0, false, 0, TextureAccess.WriteOnly, SizedInternalFormat.Rgba16f);
@@ -479,9 +485,18 @@ namespace Zirconium.Main
                 ImGui.DragInt("Target height", ref uiTargetHeight, 1f, 1);
                 ImGui.DragInt("Rays per pixel", ref pps, 1f, 1, 10);
                 ImGui.DragInt("Max bounces", ref maxBounces, 1f, 1, 30);
-                int lastDebugMode = DebugMode;
-                ImGui.DragInt("Debug mode", ref DebugMode, 1f, 0, 3);
-                _needsReset |= DebugMode != lastDebugMode;
+                int lastDebugMode = ColourMode;
+                ImGui.DragInt("Colour mode", ref ColourMode, 1f, 0, 1);
+                _needsReset |= ColourMode != lastDebugMode;
+                lastDebugMode = DepthMode;
+                ImGui.DragInt("Depth mode", ref DepthMode, 1f, 0, 1);
+                _needsReset |= DepthMode != lastDebugMode;
+                lastDebugMode = NormalMode;
+                ImGui.DragInt("Normal mode", ref NormalMode, 1f, 0, 1);
+                _needsReset |= NormalMode != lastDebugMode;
+                lastDebugMode = TestsMode;
+                ImGui.DragInt("Tests mode", ref TestsMode, 1f, 0, 1);
+                _needsReset |= TestsMode != lastDebugMode;
                 ImGui.EndDisabled();
                 if (uiTargetHeight < 1) uiTargetHeight = 1;
                 if (TargetRenderHeightNonH != uiTargetHeight)
@@ -851,6 +866,9 @@ namespace Zirconium.Main
                                     cube.AlphaIorAbsorb.Z);
                             }
                             break;
+                        case Types.Enums.GameObjectType.Mesh:
+                            SelectedGameObject.Update(position, rotation, size);
+                            break;
                     }
 
                     if (SelectedGameObject?.id.HasValue == true)
@@ -913,6 +931,12 @@ namespace Zirconium.Main
                 return;
 
             _allTrisGpu.AddRange(triGpu);
+            GameObject obj = new(null, Types.Enums.GameObjectType.Sphere, "Mesh Object", null, Vector3.Zero, Vector3.Zero, Vector3.One, Vector3.One, 0f, Vector3.Zero, 0f, 1f)
+            {
+                Send = [.. triGpu.Cast<IGpuType>()],
+                _type = Types.Enums.GameObjectType.Mesh
+            };
+            SceneObjects.Add(obj);
             UploadAllMeshesToGpu();
         }
 
@@ -925,6 +949,7 @@ namespace Zirconium.Main
             }
 
             _allTrisGpu.Clear();
+            SceneObjects.RemoveAll(obj => obj._type == Types.Enums.GameObjectType.Mesh);
             UploadAllMeshesToGpu();
         }
 
@@ -938,7 +963,15 @@ namespace Zirconium.Main
 
             _allTrisGpu.Clear();
             if (triGpu != null && triGpu.Length > 0)
+            {
                 _allTrisGpu.AddRange(triGpu);
+                GameObject obj = new(null, Types.Enums.GameObjectType.Sphere, "Mesh Object", null, Vector3.Zero, Vector3.Zero, Vector3.One, Vector3.One, 0f, Vector3.Zero, 0f, 1f)
+                {
+                    Send = [.. triGpu.Cast<IGpuType>()],
+                    _type = Types.Enums.GameObjectType.Mesh
+                };
+                SceneObjects.Add(obj);
+            }
 
             UploadAllMeshesToGpu();
         }

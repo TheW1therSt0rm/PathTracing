@@ -13,7 +13,10 @@ uniform float uFocusDist;  // distance in WORLD units (try 10.0)
 uniform ivec2 uSize; // trace resolution
 uniform int uPPS;  // rays per pixel (1, 4, 16, 64, ...)
 uniform int uMaxBounces;
-uniform int uDebugMode; // 0=off, 1=depth, 2=normals 3=num intersection tests
+uniform int uColourMode;
+uniform int uDepthMode;
+uniform int uNormalMode;
+uniform int uTestsMode;
 
 uniform vec3 camForward;
 uniform vec3 camRight;
@@ -492,7 +495,7 @@ float3 GetEnvironmentColour(Ray ray)
             }*/
 
 // ---------- Path trace ----------
-vec3 Trace(Ray r, inout uint rng)
+vec3 Trace(Ray r, inout uint rng, inout int ltests)
 {
     vec3 L = vec3(0.0);
     vec3 T = vec3(1.0);
@@ -502,6 +505,7 @@ vec3 Trace(Ray r, inout uint rng)
     vec3 sA = vec3(0.0);
 
     int tests = 0;
+
     for (int bounce = 0; bounce <= uMaxBounces; bounce++)
     {
         HitInfo hit = RayScene(r, false, tests);
@@ -626,13 +630,19 @@ vec3 Trace(Ray r, inout uint rng)
 
         T *= hit.m.col;
     }
+    ltests += tests;
+    float div = float(ltests) / 2.0;
+    ltests = int(round(div)) * 2;
 
-    vec3 finalColour = vec3(float(tests) / 30.0);
-    finalColour = tests > 29 ? vec3(1.0, 0.0, 0.0) : finalColour;
-    vec3 col = uDebugMode == 1 ? imageLoad(uDepth, ivec2(gl_GlobalInvocationID.xy)).rrr :
-               uDebugMode == 2 ? imageLoad(uNormal, ivec2(gl_GlobalInvocationID.xy)).rgb :
-               uDebugMode == 3 ? finalColour :
-               L;
+    vec3 finalColour = vec3(float(ltests) / 30.0);
+    finalColour = ltests > 29 ? vec3(1.0, 0.0, 0.0) : finalColour;
+    vec3 col = vec3(0.0);
+    col += uColourMode == 1 ? L : vec3(0.0);
+    col += uDepthMode == 1 ? imageLoad(uDepth, ivec2(gl_GlobalInvocationID.xy)).rrr : vec3(0.0);
+    col += uNormalMode == 1 ? imageLoad(uNormal, ivec2(gl_GlobalInvocationID.xy)).rgb * 0.5 + 0.5 : vec3(0.0);
+    col += uTestsMode == 1 ? finalColour : vec3(0.0);
+
+    col /= float(uColourMode + uDepthMode + uNormalMode + uTestsMode);
 
     return col;
 }
@@ -665,6 +675,7 @@ void main()
     vec3 viewPointLocal = vec3(uv - 0.5, 1.0) * viewParams;
     vec3 viewPoint = (camLocalToWorldMatrix * vec4(viewPointLocal, 1.0)).xyz;
 
+    int tests = 0;
     vec3 cur = vec3(0.0);
     for (int i = 0; i < uPPS; i++)
     {
@@ -691,7 +702,7 @@ void main()
         if (dot(dir,dir) < 1e-20) dir = pinDir;      // avoid normalize(0)
         r.d = SafeNormalize(dir);
 
-        cur += Trace(r, rng);
+        cur += Trace(r, rng, tests);
     }
     cur /= float(uPPS);
 
